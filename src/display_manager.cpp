@@ -1,5 +1,6 @@
 #include "display_manager.h"
 #include "config.h"
+#include "logger.h"
 #include <map>
 
 TFT_eSPI DisplayManager::tft = TFT_eSPI();
@@ -7,6 +8,13 @@ String DisplayManager::last_time_string = "";
 TemperatureData DisplayManager::last_heating = {0.0f, 0.0f, false, ""};
 WeatherData DisplayManager::last_weather = {0.0f, 0, "", 0, 0, 0.0f, 0.0f, true, "", false};
 bool DisplayManager::first_draw = true;
+uint8_t DisplayManager::current_brightness = TFT_BACKLIGHT_BRIGHTNESS;
+unsigned long DisplayManager::last_pixel_shift = 0;
+int DisplayManager::pixel_shift_x = 0;
+int DisplayManager::pixel_shift_y = 0;
+unsigned long DisplayManager::display_on_time = 0;
+unsigned long DisplayManager::last_temp_check = 0;
+bool DisplayManager::screensaver_active = false;
 
 void DisplayManager::init() {
     tft.init();
@@ -15,8 +23,9 @@ void DisplayManager::init() {
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
     
     pinMode(TFT_BACKLIGHT_PIN, OUTPUT);
-    analogWrite(TFT_BACKLIGHT_PIN, TFT_BACKLIGHT_BRIGHTNESS);
+    set_brightness(TFT_BACKLIGHT_BRIGHTNESS);
     
+    display_on_time = millis();
     first_draw = true;
 }
 
@@ -102,6 +111,9 @@ void DisplayManager::draw_temperature_panel(int x, int y, int width, int height,
     const uint16_t bg_color = 0x2124;
     const uint16_t border_color = 0x4208;
     
+    x += pixel_shift_x;
+    y += pixel_shift_y;
+    
     tft.fillRoundRect(x, y, width, height, 12, bg_color);
     tft.drawRoundRect(x, y, width, height, 12, border_color);
     
@@ -135,6 +147,9 @@ void DisplayManager::draw_temperature_panel(int x, int y, int width, int height,
 void DisplayManager::draw_weather_panel(int x, int y, int width, int height, const WeatherData& data) {
     const uint16_t bg_color = 0x1082;
     const uint16_t border_color = 0x2945;
+    
+    x += pixel_shift_x;
+    y += pixel_shift_y;
     
     tft.fillRoundRect(x, y, width, height, 12, bg_color);
     tft.drawRoundRect(x, y, width, height, 12, border_color);
@@ -309,4 +324,90 @@ String DisplayManager::get_location_display_name(const String& location) {
         return it->second;
     }
     return location;
+}
+
+void DisplayManager::handle_protection() {
+    unsigned long current_time = millis();
+    
+    #if TFT_AUTO_BRIGHTNESS_ENABLED
+    adjust_brightness_for_time();
+    #endif
+    
+    check_temperature();
+    
+    #if TFT_PIXEL_SHIFT_ENABLED
+    if (screensaver_active && current_time - last_pixel_shift >= TFT_PIXEL_SHIFT_INTERVAL) {
+        apply_pixel_shift();
+        last_pixel_shift = current_time;
+    }
+    #endif
+}
+
+void DisplayManager::adjust_brightness_for_time() {
+    uint8_t target_brightness;
+    
+    if (is_night_time()) {
+        target_brightness = screensaver_active ? TFT_SCREENSAVER_BRIGHTNESS : TFT_NIGHT_BRIGHTNESS;
+    } else {
+        target_brightness = screensaver_active ? TFT_SCREENSAVER_BRIGHTNESS : TFT_BACKLIGHT_BRIGHTNESS;
+    }
+    
+    if (current_brightness != target_brightness) {
+        set_brightness(target_brightness);
+    }
+}
+
+void DisplayManager::check_temperature() {
+    unsigned long current_time = millis();
+    
+    if (current_time - last_temp_check < TEMP_CHECK_INTERVAL) {
+        return;
+    }
+    
+    last_temp_check = current_time;
+    float temp = get_esp32_temperature();
+    
+    if (temp > TEMP_CRITICAL_THRESHOLD) {
+        WEB_LOG("CRITICAL: ESP32 temperature " + String(temp, 1) + "C - Display OFF");
+        set_brightness(0);
+        tft.fillScreen(TFT_BLACK);
+    } else if (temp > TEMP_WARNING_THRESHOLD) {
+        WEB_LOG("WARNING: ESP32 temperature " + String(temp, 1) + "C - Reducing brightness");
+        uint8_t safe_brightness = current_brightness * 0.5;
+        set_brightness(safe_brightness);
+    }
+}
+
+void DisplayManager::set_brightness(uint8_t brightness) {
+    current_brightness = brightness;
+    analogWrite(TFT_BACKLIGHT_PIN, brightness);
+}
+
+uint8_t DisplayManager::get_current_brightness() {
+    return current_brightness;
+}
+
+unsigned long DisplayManager::get_display_uptime_hours() {
+    return (millis() - display_on_time) / 3600000;
+}
+
+void DisplayManager::apply_pixel_shift() {
+    pixel_shift_x = (pixel_shift_x + 3) % 10 - 5;
+    pixel_shift_y = (pixel_shift_y + 2) % 10 - 5;
+    
+    first_draw = true;
+}
+
+bool DisplayManager::is_night_time() {
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) {
+        return false;
+    }
+    
+    int hour = timeinfo.tm_hour;
+    return (hour >= 22 || hour < 6);
+}
+
+float DisplayManager::get_esp32_temperature() {
+    return temperatureRead();
 }

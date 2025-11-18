@@ -4,6 +4,8 @@
 #include <ESPAsyncWebServer.h>
 #include "display_manager.h"
 
+extern bool screensaver_active;
+
 class WebServerManager
 {
 public:

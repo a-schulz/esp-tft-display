@@ -190,6 +190,20 @@ String WebServerManager::build_dashboard_html()
     html += "<div class='metric'><span class='metric-label'>Free Heap</span><span class='metric-value'>" + String(ESP.getFreeHeap() / 1024) + " KB</span></div>";
     html += "<div class='metric'><span class='metric-label'>Uptime</span><span class='metric-value'>" + String(millis() / 60000) + " min</span></div>";
     
+    float esp_temp = DisplayManager::get_esp32_temperature();
+    String temp_color = esp_temp > TEMP_WARNING_THRESHOLD ? "color:#da3633" : "color:#2ea043";
+    html += "<div class='metric'><span class='metric-label'>ESP32 Temperature</span><span class='metric-value' style='" + temp_color + "'>" + String(esp_temp, 1) + "°C</span></div>";
+    
+    html += "</div>";
+    
+    html += "<div class='card'>";
+    html += "<h2><span class='icon'>🖥️</span> Display Status (24/7 Mode)</h2>";
+    html += "<div class='metric'><span class='metric-label'>Display Uptime</span><span class='metric-value'>" + String(DisplayManager::get_display_uptime_hours()) + " hours</span></div>";
+    html += "<div class='metric'><span class='metric-label'>Current Brightness</span><span class='metric-value'>" + String((DisplayManager::get_current_brightness() * 100) / 255) + "%</span></div>";
+    html += "<div class='metric'><span class='metric-label'>Screensaver</span><span class='metric-value'>" + String(screensaver_active ? "Active" : "Inactive") + "</span></div>";
+    html += "<div class='metric'><span class='metric-label'>Pixel Shift</span><span class='metric-value'>" + String(TFT_PIXEL_SHIFT_ENABLED ? "Enabled" : "Disabled") + "</span></div>";
+    html += "<div class='metric'><span class='metric-label'>Auto Brightness</span><span class='metric-value'>" + String(TFT_AUTO_BRIGHTNESS_ENABLED ? "Enabled" : "Disabled") + "</span></div>";
+    
     struct tm timeinfo;
     if (getLocalTime(&timeinfo)) {
         char time_str[64];

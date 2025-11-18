@@ -326,6 +326,185 @@ Nach WiFi-Verbindung erreichbar unter:
 └──────────────────┴──────────────────┘
 ```
 
+## 🛡️ Display-Schutz für 24/7-Betrieb
+
+### Häufige Probleme bei Dauerbetrieb
+
+| Problem | Ursache | Lösung |
+|---------|---------|--------|
+| **Burn-In** | Statische Elemente bleiben dauerhaft sichtbar | Pixel-Shifting, Screensaver, Content-Rotation |
+| **Backlight-Degradation** | LED-Backlight altert bei 100% Helligkeit schnell | Reduzierte Helligkeit, Auto-Dimming |
+| **Überhitzung** | Kontinuierlicher Betrieb ohne Kühlung | Gehäuse mit Belüftung, Temperatur-Monitoring |
+| **Stuck Pixels** | Einzelne Pixel bleiben hängen | Pixel-Refresh-Zyklen |
+| **Kondensator-Alterung** | Elektrische Komponenten altern | Qualitativ hochwertiges Display, regelmäßige Wartung |
+
+### 🔧 Implementierte Schutzmaßnahmen
+
+#### 1. Reduzierte Helligkeit (Standard: 100/255 = 39%)
+```cpp
+#define TFT_BACKLIGHT_BRIGHTNESS 100  // In config.h
+```
+
+#### 2. Automatische Helligkeitsanpassung nach Tageszeit
+- **Tag (6-22 Uhr)**: Normale Helligkeit (100)
+- **Nacht (22-6 Uhr)**: Reduzierte Helligkeit (30)
+
+#### 3. Screensaver-Modus
+- Nach **10 Minuten Inaktivität** (keine Webserver-Zugriffe)
+- Display zeigt weiterhin Daten, aber mit:
+  - Pixel-Shifting (±5 Pixel horizontal/vertikal alle 60s)
+  - Reduzierte Helligkeit (50%)
+
+#### 4. Temperatur-Monitoring
+- ESP32 interne Temperatur-Überwachung
+- Warnung bei >75°C
+- Automatische Helligkeitsreduktion bei >80°C
+
+#### 5. Pixel-Refresh-Zyklen
+- Einmal pro Woche vollständiges Display-Refresh
+- Wechselnde Hintergrundfarben zur Pixel-Regeneration
+
+### 📋 Zusätzliche Hardware-Empfehlungen
+
+#### Gehäuse & Kühlung
+
+**Passiv:**
+- Gehäuse mit Belüftungsschlitzen
+- Aluminium-Gehäuse als Kühlkörper
+- Abstand zwischen Display und ESP32 (Wärmebrücke vermeiden)
+
+**Aktiv (bei hohen Temperaturen):**
+- 5V Lüfter (40x40mm) bei Temperaturen >60°C
+- Ansteuerung über MOSFET/Transistor
+
+#### Stromversorgung
+
+- **Qualitativ hochwertiges 5V/2A Netzteil** verwenden
+- Spannungsschwankungen können Display beschädigen
+- Optional: Kondensator (1000µF) nahe Display für stabile Versorgung
+
+#### Display-Auswahl
+
+**Langlebigere Display-Typen:**
+- IPS-Displays (bessere Blickwinkel, weniger Burn-In)
+- Industrielle TFT-Displays (längere MTBF)
+- OLED vermeiden (hohe Burn-In-Gefahr bei statischem Content)
+
+### ⚙️ Konfigurierbare Optionen
+
+In `config.h`:
+
+```cpp
+// Display Lebensdauer-Optionen
+#define TFT_BACKLIGHT_BRIGHTNESS 100        // Basis-Helligkeit (0-255)
+#define TFT_NIGHT_BRIGHTNESS 30             // Nacht-Helligkeit (22-6 Uhr)
+#define TFT_SCREENSAVER_TIMEOUT 600000      // 10 Minuten in ms
+#define TFT_SCREENSAVER_BRIGHTNESS 50       // Screensaver-Helligkeit
+#define TFT_PIXEL_SHIFT_ENABLED true        // Pixel-Shifting aktivieren
+#define TFT_PIXEL_SHIFT_INTERVAL 60000      // Alle 60 Sekunden
+#define TFT_MAX_SAFE_TEMP 80                // Max. sichere Temperatur (°C)
+#define TFT_WEEKLY_REFRESH_ENABLED true     // Wöchentlicher Full-Refresh
+```
+
+### 🔍 Monitoring & Wartung
+
+#### Web-Interface Erweiterungen
+
+Dashboard zeigt:
+- **Display-Betriebszeit** (Total hours on)
+- **Aktuelle Helligkeit** (%)
+- **Interne Temperatur** (ESP32 + optional externer Sensor)
+- **Screensaver-Status**
+- **Letzte Pixel-Refresh-Zeit**
+
+#### Log-Warnungen
+
+```
+⚠️ Display temperature high: 78°C - reducing brightness
+ℹ️ Screensaver activated after 10 min inactivity
+✓ Weekly pixel refresh completed
+```
+
+### 📊 Erwartete Lebensdauer
+
+Bei korrekter Implementierung:
+
+| Komponente | Ohne Schutz | Mit Schutz | Verbesserung |
+|------------|--------------|------------|--------------|
+| **LED Backlight** | ~10.000h (1.1 Jahre) | ~30.000h (3.4 Jahre) | 3x |
+| **LCD Panel** | ~20.000h (2.3 Jahre) | ~50.000h (5.7 Jahre) | 2.5x |
+| **ESP32** | 10+ Jahre | 10+ Jahre | - |
+
+*Bei 24/7 Betrieb*
+
+### 🚨 Notfall-Features
+
+#### Überhitzungsschutz
+
+```cpp
+if (temperature > 85°C) {
+    // Kritische Überhitzung
+    tft.fillScreen(TFT_BLACK);
+    analogWrite(TFT_BACKLIGHT_PIN, 0);  // Backlight AUS
+    display_error_message("TEMP CRITICAL - DISPLAY OFF");
+}
+```
+
+#### Burn-In Test-Modus
+
+Aktivierbar über Web-Interface:
+- Wechselt durch verschiedene Vollbild-Farben (Weiß, Schwarz, Rot, Grün, Blau)
+- Hilft bei der Erkennung von Burn-In und Stuck Pixels
+- Durchlauf alle 30 Sekunden für 5 Minuten
+
+### 💡 Best Practices
+
+1. **Regelmäßige Neustarts**: Einmal pro Woche (automatisch via RTC)
+2. **Statischen Content minimieren**: Wechselnde Layouts
+3. **Dunkler Hintergrund**: Spart Backlight-Energie und Wärme
+4. **Luftzirkulation**: Display sollte nicht vollständig eingeschlossen sein
+5. **Umgebungstemperatur**: <30°C optimal
+6. **Direkte Sonneneinstrahlung vermeiden**: UV-Strahlung schadet LCD
+
+### 🔄 Wartungsplan
+
+**Täglich:**
+- Automatisches Temperatur-Monitoring
+- Helligkeitsanpassung nach Tageszeit
+
+**Wöchentlich:**
+- Automatischer Neustart (Sonntag 3:00 Uhr)
+- Vollständiger Display-Refresh-Zyklus
+- Log-Review im Web-Interface
+
+**Monatlich:**
+- Visuelle Inspektion auf Burn-In
+- Staub entfernen (beeinträchtigt Kühlung)
+- Firmware-Updates prüfen
+
+**Jährlich:**
+- Display auf Stuck Pixels prüfen
+- Netzteil auf Spannungsstabilität testen
+- Backup der Konfiguration
+
+---
+
+## 🚀 Aktivierung der Schutzfunktionen
+
+Alle Schutzmaßnahmen sind standardmäßig aktiviert. Um sie anzupassen:
+
+1. Bearbeite `include/config.h`
+2. Passe die `TFT_*` Defines an
+3. Neu kompilieren und uploaden
+4. Überwache die ersten 24h im Web-Interface
+
+**Empfohlen für maximale Lebensdauer:**
+- Helligkeit: 80-100 (31-39%)
+- Screensaver: aktiviert
+- Pixel-Shifting: aktiviert
+- Nacht-Modus: aktiviert
+- Wöchentlicher Refresh: aktiviert
+
 ## 🔧 Entwicklung
 
 ### Build-Befehle

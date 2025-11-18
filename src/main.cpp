@@ -10,16 +10,18 @@
 RTC_DATA_ATTR int boot_count = 0;
 
 volatile bool button_pressed = false;
+bool screensaver_active = false;
 unsigned long last_button_press = 0;
 unsigned long boot_time = 0;
 unsigned long last_temperature_update = 0;
 unsigned long last_weather_update = 0;
 unsigned long last_time_update = 0;
+unsigned long last_activity_time = 0;
 
 const unsigned long OTA_WINDOW_DURATION = 300000;
 const unsigned long TEMPERATURE_UPDATE_INTERVAL = 60000;
 const unsigned long WEATHER_UPDATE_INTERVAL = 600000;
-const unsigned long TIME_UPDATE_INTERVAL = 60000;
+const unsigned long TIME_UPDATE_INTERVAL = 10000;
 
 TemperatureData garage_data;
 TemperatureData heating_data;
@@ -30,6 +32,7 @@ void setup_button();
 void fetch_temperature_data();
 void fetch_weather_data();
 void update_data_if_needed();
+void check_screensaver_timeout();
 
 void setup()
 {
@@ -87,6 +90,10 @@ void loop()
   }
 
   update_data_if_needed();
+  
+  DisplayManager::handle_protection();
+  
+  check_screensaver_timeout();
 
   delay(100);
 }
@@ -143,5 +150,29 @@ void update_data_if_needed()
   {
     DisplayManager::update_time_only();
     last_time_update = millis();
+  }
+}
+
+void check_screensaver_timeout()
+{
+  unsigned long current_time = millis();
+  unsigned long last_web_activity = WebServerManager::get_last_activity_time();
+  
+  if (current_time - last_web_activity > TFT_SCREENSAVER_TIMEOUT)
+  {
+    if (!screensaver_active)
+    {
+      screensaver_active = true;
+      WEB_LOG("Screensaver activated after " + String(TFT_SCREENSAVER_TIMEOUT / 60000) + " min inactivity");
+    }
+  }
+  else
+  {
+    if (screensaver_active)
+    {
+      screensaver_active = false;
+      DisplayManager::adjust_brightness_for_time();
+      WEB_LOG("Screensaver deactivated - user activity detected");
+    }
   }
 }
