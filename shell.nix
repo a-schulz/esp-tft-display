@@ -26,7 +26,7 @@ pkgs.mkShell {
   ];
 
   shellHook = ''
-    echo "🌅 Sunrise Alarm Clock Development Environment"
+    echo "ESP 32 Development Environment"
     echo "Available commands:"
     echo "  pio lib install - Install project dependencies"
     echo "  pio run          - Build the project"
